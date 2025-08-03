@@ -1,0 +1,6 @@
+{
+  "name": "Komi-San Video Prompt Generator",
+  "description": "Generate delightful and creative text-to-video prompts with the help of Komi-san! This dashboard helps you craft detailed prompts, from cinematic styles to cute animations, for your AI video creation.",
+  "requestFramePermissions": [],
+  "prompt": ""
+}

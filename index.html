@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Komi-San Video Prompt Generator</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Kiwi+Maru:wght@500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Josefin+Sans:wght@600&display=swap" rel="stylesheet">
+    <script>
+      // On page load or when changing themes, best to add inline in `head` to avoid FOUC
+      if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        document.documentElement.classList.add('dark')
+      } else {
+        document.documentElement.classList.remove('dark')
+      }
+    </script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            colors: {
+              // New Light Theme Palette
+              'light-primary': '#F0F9FF',   // Very light sky blue background
+              'light-secondary': '#FFFFFF', // White for cards/panels
+              'light-surface': '#E0F2FE',   // Light sky blue for inputs/secondary bg
+              'light-accent': '#BAE6FD',    // Muted sky blue for borders/dividers
+              'light-text-primary': '#082F49', // Deep navy for primary text
+              'light-text-secondary': '#075985', // Muted navy for secondary text
+              
+              // Dark Theme Palette
+              'dark-primary': '#0D1B2A',     // Very dark blue, almost black
+              'dark-secondary': '#1B263B',   // Dark blue for cards/panels
+              'dark-surface': '#415A77',     // Muted blue-gray for inputs
+              'dark-accent': '#778DA9',     // Lighter blue-gray for borders/muted text
+              'dark-text': '#E0E1DD',       // Off-white text
+
+              // Brand Color
+              'brand-blue': '#0284C7',       // A vibrant, medium sky blue
+            }
+          },
+        },
+        plugins: [],
+      }
+    </script>
+    <style>
+      /* For custom scrollbar styling */
+      ::-webkit-scrollbar {
+        width: 8px;
+      }
+      /* Light theme scrollbar */
+      ::-webkit-scrollbar-track {
+        background: rgba(224, 242, 254, 0.5); /* light-surface */
+      }
+      ::-webkit-scrollbar-thumb {
+        background: rgba(186, 230, 253, 0.7); /* light-accent */
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: rgba(125, 211, 252, 0.8);
+      }
+      /* Dark theme scrollbar */
+      html.dark ::-webkit-scrollbar-track {
+        background: rgba(27, 38, 59, 0.5); /* dark-secondary */
+      }
+      html.dark ::-webkit-scrollbar-thumb {
+        background: rgba(65, 90, 119, 0.7); /* dark-surface */
+      }
+      html.dark ::-webkit-scrollbar-thumb:hover {
+        background: rgba(119, 141, 169, 0.7); /* dark-accent */
+      }
+    </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"></script>
+  <script type="importmap">
+{
+  "imports": {
+    "react-dom/": "https://esm.sh/react-dom@^19.1.0/",
+    "react/": "https://esm.sh/react@^19.1.0/",
+    "react": "https://esm.sh/react@^19.1.0",
+    "@google/genai": "https://esm.sh/@google/genai@^1.10.0"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
