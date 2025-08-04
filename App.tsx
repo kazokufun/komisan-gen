@@ -17,6 +17,7 @@ import AnimationsKomi from './components/AnimationsKomi';
 import NegativePromptSelector from './components/NegativePromptSelector';
 import LoadingPage from './components/LoadingPage';
 import DurationSelector from './components/DurationSelector';
+import PinModal from './components/PinModal';
 
 import VideoIcon from './components/icons/VideoIcon';
 import CameraIcon from './components/icons/CameraIcon';
@@ -89,6 +90,7 @@ const App: React.FC = () => {
     };
 
     const [isAppLoading, setIsAppLoading] = useState(true);
+    const [isPinVerified, setIsPinVerified] = useState(false);
     const [theme, setTheme] = useState<Theme>('light');
     const [mode, setMode] = useState<Mode>('Prompt');
     const [formState, setFormState] = useState<FormState>(initialFormState);
@@ -121,8 +123,22 @@ const App: React.FC = () => {
     
     const isApiDisabled = !apiSettings.default.enabled;
 
+    const handlePinVerify = (pin: string): boolean => {
+        if (pin === '123321') {
+            localStorage.setItem('isKomiSanPinVerified', 'true');
+            setIsPinVerified(true);
+            return true;
+        } else {
+            return false;
+        }
+    };
 
     useEffect(() => {
+        // Handle PIN verification
+        if (localStorage.getItem('isKomiSanPinVerified') === 'true') {
+            setIsPinVerified(true);
+        }
+        
         // Handle Theme
         const storedTheme = localStorage.getItem('theme');
         const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -490,12 +506,14 @@ const App: React.FC = () => {
     const handleClearState = () => {
         localStorage.removeItem('komiSanPromptGeneratorState');
         localStorage.removeItem('komiSanPromptGeneratorApiSettings');
+        localStorage.removeItem('isKomiSanPinVerified'); // Clear pin as well
         setFormState(initialFormState);
         setApiSettings(initialApiSettings);
         setNegativePrompts([]);
         setDuration(DURATION_OPTIONS[0]);
         setMode('Prompt');
         resetOutputs();
+        setIsPinVerified(false); // Log out
         setSaveMessage('Saved data has been cleared.');
         setTimeout(() => setSaveMessage(''), 3000);
     };
@@ -511,7 +529,9 @@ const App: React.FC = () => {
     return (
         <>
             {isAppLoading && <LoadingPage onAnimationEnd={() => setIsAppLoading(false)} />}
-            <div className={`transition-opacity duration-500 ${isAppLoading ? 'opacity-0' : 'opacity-100'}`}>
+            {!isAppLoading && !isPinVerified && <PinModal onVerify={handlePinVerify} />}
+            
+            <div className={`transition-opacity duration-500 ${isAppLoading || !isPinVerified ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
                 <AnimatedBackground />
                 <AnimationsClick />
                 <SettingsModal 
