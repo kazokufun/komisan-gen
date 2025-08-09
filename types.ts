@@ -1,4 +1,6 @@
 
+export type PromptFormat = 'JSON' | 'Description';
+
 export type AnalysisLevel = 'Normal' | 'Akurat' | 'Detail';
 
 export interface PromptOptions {
@@ -16,6 +18,7 @@ export interface PromptOptions {
   };
   negativePrompts?: string[];
   duration?: number;
+  promptFormat: PromptFormat;
 }
 
 export interface RadioOption {
