@@ -1,7 +1,6 @@
 
-
 import React, { useState, useCallback, useEffect } from 'react';
-import { PromptOptions, PromptVariation, AnalyzedPrompt, AnalysisLevel, ApiSettings } from './types';
+import { PromptOptions, PromptVariation, AnalyzedPrompt, AnalysisLevel, ApiSettings, PromptFormat } from './types';
 import { VIDEO_STYLES, CAMERA_ANGLES, VISUAL_STYLES, NEGATIVE_PROMPTS } from './constants';
 import { generateVideoPrompt, generatePromptVariations, analyzeVideoForPrompt, generateCreativeIdea, updateApiKeys } from './services/geminiService';
 import Dropdown from './components/Dropdown';
@@ -18,6 +17,7 @@ import NegativePromptSelector from './components/NegativePromptSelector';
 import LoadingPage from './components/LoadingPage';
 import DurationSelector from './components/DurationSelector';
 import PinModal from './components/PinModal';
+import FormatSelector from './components/FormatSelector';
 
 import VideoIcon from './components/icons/VideoIcon';
 import CameraIcon from './components/icons/CameraIcon';
@@ -46,6 +46,7 @@ const App: React.FC = () => {
             videoStyle: string;
             cameraAngle: string;
             visualStyle: string;
+            promptFormat: PromptFormat;
         };
         motion: {
             idea: string;
@@ -53,11 +54,13 @@ const App: React.FC = () => {
             visualStyle: string;
             imageFile: File | null;
             imageBase64: string | null;
+            promptFormat: PromptFormat;
         };
         analyze: {
             videoFile: File | null;
             videoBase64: string | null;
             analysisLevel: AnalysisLevel;
+            promptFormat: PromptFormat;
         };
     }
     
@@ -67,6 +70,7 @@ const App: React.FC = () => {
             videoStyle: VIDEO_STYLES[0].id,
             cameraAngle: CAMERA_ANGLES[0].id,
             visualStyle: VISUAL_STYLES[0].id,
+            promptFormat: 'JSON',
         },
         motion: {
             idea: '',
@@ -74,11 +78,13 @@ const App: React.FC = () => {
             visualStyle: VISUAL_STYLES[0].id,
             imageFile: null,
             imageBase64: null,
+            promptFormat: 'JSON',
         },
         analyze: {
             videoFile: null,
             videoBase64: null,
             analysisLevel: 'Normal',
+            promptFormat: 'JSON',
         },
     };
 
@@ -107,7 +113,7 @@ const App: React.FC = () => {
     const [variationInstruction, setVariationInstruction] = useState('');
     const [activeVariationIndex, setActiveVariationIndex] = useState<number | null>(null);
     
-    const [analyzedPrompt, setAnalyzedPrompt] = useState<AnalyzedPrompt | null>(null);
+    const [analyzedPrompt, setAnalyzedPrompt] = useState<AnalyzedPrompt | string | null>(null);
 
     const [saveMessage, setSaveMessage] = useState('');
 
@@ -233,6 +239,13 @@ const App: React.FC = () => {
     
     const isMotionMode = mode === 'Motion';
     const isAnalyzeMode = mode === 'Analyze';
+
+    const handleFormatChange = (value: PromptFormat) => {
+        setFormState(prev => ({
+            ...prev,
+            [mode.toLowerCase()]: { ...prev[mode.toLowerCase() as Lowercase<Mode>], promptFormat: value }
+        }));
+    };
     
     const handleModeChange = (newMode: Mode) => {
         resetOutputs();
@@ -333,7 +346,7 @@ const App: React.FC = () => {
         resetOutputs();
     
         if (isAnalyzeMode) {
-            const { videoFile, videoBase64, analysisLevel } = formState.analyze;
+            const { videoFile, videoBase64, analysisLevel, promptFormat } = formState.analyze;
             if (!videoFile || !videoBase64) {
                 setError("Please upload a video file to analyze.");
                 setIsLoading(false);
@@ -349,7 +362,7 @@ const App: React.FC = () => {
                 const result = await analyzeVideoForPrompt({
                     mimeType: videoFile.type,
                     data: base64Data,
-                }, analysisLevel);
+                }, analysisLevel, promptFormat);
                 setAnalyzedPrompt(result);
             } catch (err) {
                  if (err instanceof Error) {
@@ -365,7 +378,7 @@ const App: React.FC = () => {
             let currentIdea: string;
     
             if (isMotionMode) {
-                const { idea, videoStyle, visualStyle, imageFile, imageBase64 } = formState.motion;
+                const { idea, videoStyle, visualStyle, imageFile, imageBase64, promptFormat } = formState.motion;
                 currentIdea = idea;
                 options = {
                     idea,
@@ -374,6 +387,7 @@ const App: React.FC = () => {
                     visualStyle,
                     negativePrompts,
                     duration,
+                    promptFormat
                 };
                 if (imageFile && imageBase64) {
                     const base64Data = imageBase64.split(',')[1];
@@ -385,9 +399,9 @@ const App: React.FC = () => {
                     }
                 }
             } else { // Prompt mode
-                const { idea, videoStyle, cameraAngle, visualStyle } = formState.prompt;
+                const { idea, videoStyle, cameraAngle, visualStyle, promptFormat } = formState.prompt;
                 currentIdea = idea;
-                options = { idea, videoStyle, cameraAngle, visualStyle, negativePrompts, duration };
+                options = { idea, videoStyle, cameraAngle, visualStyle, negativePrompts, duration, promptFormat };
             }
     
             if (!currentIdea.trim()) {
@@ -397,8 +411,8 @@ const App: React.FC = () => {
             }
     
             try {
-                const jsonPrompt = await generateVideoPrompt(options);
-                setGeneratedPromptEn(jsonPrompt);
+                const promptResult = await generateVideoPrompt(options);
+                setGeneratedPromptEn(promptResult);
                 setGeneratedPromptId('');
             } catch (err) {
                 if (err instanceof Error) {
@@ -415,8 +429,12 @@ const App: React.FC = () => {
 
     const handleGenerateVariations = async () => {
         const originalPrompt = isAnalyzeMode && analyzedPrompt 
-            ? JSON.stringify(analyzedPrompt, null, 2) 
+            ? (typeof analyzedPrompt === 'string' ? analyzedPrompt : JSON.stringify(analyzedPrompt, null, 2))
             : generatedPromptEn;
+        
+        const promptFormat = isAnalyzeMode
+            ? formState.analyze.promptFormat
+            : (isMotionMode ? formState.motion.promptFormat : formState.prompt.promptFormat);
 
         if (!originalPrompt) return;
 
@@ -426,26 +444,10 @@ const App: React.FC = () => {
         setActiveVariationIndex(null);
 
         try {
-            let videoStyle = '';
-            let visualStyle = '';
-
-            if (isAnalyzeMode && analyzedPrompt) {
-                videoStyle = analyzedPrompt.qualityStyle; // Note: Inconsistent naming, but following original logic
-                visualStyle = analyzedPrompt.qualityStyle;
-            } else if (isMotionMode) {
-                videoStyle = formState.motion.videoStyle;
-                visualStyle = formState.motion.visualStyle;
-            } else { // Prompt mode
-                videoStyle = formState.prompt.videoStyle;
-                visualStyle = formState.prompt.visualStyle;
-            }
-
             const variations = await generatePromptVariations(
                 originalPrompt, 
-                videoStyle, 
-                visualStyle,
                 variationInstruction,
-                !isAnalyzeMode // `simple` is true for Prompt/Motion, false for Analyze
+                promptFormat,
             );
             setPromptVariations(variations);
         } catch (err) {
@@ -462,13 +464,13 @@ const App: React.FC = () => {
     const handleCopy = (type: 'main' | 'variation', lang: 'en' | 'id', index?: number) => {
         let textToCopy = '';
         if (type === 'main') {
-            const jsonToCopy = isAnalyzeMode && analyzedPrompt 
-                ? JSON.stringify(analyzedPrompt, null, 2)
+            const mainOutput = isAnalyzeMode && analyzedPrompt
+                ? (typeof analyzedPrompt === 'string' ? analyzedPrompt : JSON.stringify(analyzedPrompt, null, 2))
                 : !isAnalyzeMode && generatedPromptEn
                 ? generatedPromptEn
                 : null;
-            if (jsonToCopy) {
-                textToCopy = jsonToCopy;
+            if (mainOutput) {
+                textToCopy = mainOutput;
             }
         } else if (type === 'variation' && index !== undefined && promptVariations[index]) {
             textToCopy = lang === 'en' ? promptVariations[index].english : promptVariations[index].indonesian;
@@ -486,14 +488,8 @@ const App: React.FC = () => {
             mode,
             formState: {
                 prompt: formState.prompt,
-                motion: {
-                    idea: formState.motion.idea,
-                    videoStyle: formState.motion.videoStyle,
-                    visualStyle: formState.motion.visualStyle,
-                },
-                analyze: {
-                    analysisLevel: formState.analyze.analysisLevel
-                },
+                motion: { ...formState.motion, imageFile: null, imageBase64: null },
+                analyze: { ...formState.analyze, videoFile: null, videoBase64: null },
             },
             negativePrompts,
             duration,
@@ -520,11 +516,15 @@ const App: React.FC = () => {
     
     const analysisLevelMap: AnalysisLevel[] = ['Normal', 'Akurat', 'Detail'];
     
-    const mainOutputJsonString = isAnalyzeMode && analyzedPrompt
-        ? JSON.stringify(analyzedPrompt, null, 2)
+    const mainOutputContent = isAnalyzeMode && analyzedPrompt
+        ? (typeof analyzedPrompt === 'string' ? analyzedPrompt : JSON.stringify(analyzedPrompt, null, 2))
         : !isAnalyzeMode && generatedPromptEn
         ? generatedPromptEn
         : null;
+
+    const currentPromptFormat = isAnalyzeMode
+        ? formState.analyze.promptFormat
+        : (isMotionMode ? formState.motion.promptFormat : formState.prompt.promptFormat);
 
     return (
         <>
@@ -640,51 +640,6 @@ const App: React.FC = () => {
                                                 previewUrl={formState.motion.imageBase64}
                                             />
                                         )}
-
-                                        <Dropdown
-                                          legend="Genre"
-                                          options={VIDEO_STYLES}
-                                          selectedValue={isMotionMode ? formState.motion.videoStyle : formState.prompt.videoStyle}
-                                          onChange={(value) => setFormState(prev => isMotionMode 
-                                            ? { ...prev, motion: { ...prev.motion, videoStyle: value } }
-                                            : { ...prev, prompt: { ...prev.prompt, videoStyle: value } }
-                                          )}
-                                          icon={<VideoIcon />}
-                                        />
-                                        <Dropdown
-                                          legend="Camera Angle"
-                                          options={CAMERA_ANGLES}
-                                          selectedValue={formState.prompt.cameraAngle}
-                                          onChange={(value) => setFormState(prev => ({ ...prev, prompt: { ...prev.prompt, cameraAngle: value } }))}
-                                          icon={<CameraIcon />}
-                                          disabled={isMotionMode}
-                                        />
-                                        <Dropdown
-                                          legend="Quality Style"
-                                          options={VISUAL_STYLES}
-                                          selectedValue={isMotionMode ? formState.motion.visualStyle : formState.prompt.visualStyle}
-                                          onChange={(value) => setFormState(prev => isMotionMode 
-                                            ? { ...prev, motion: { ...prev.motion, visualStyle: value } }
-                                            : { ...prev, prompt: { ...prev.prompt, visualStyle: value } }
-                                          )}
-                                          icon={<PaletteIcon />}
-                                        />
-                                        
-                                        <NegativePromptSelector
-                                            options={NEGATIVE_PROMPTS}
-                                            selected={negativePrompts}
-                                            onChange={setNegativePrompts}
-                                            disabled={isApiDisabled || isLoading || isVariationLoading || isIdeaLoading}
-                                            icon={<BanIcon />}
-                                        />
-                                        
-                                        <DurationSelector
-                                            options={DURATION_OPTIONS}
-                                            selectedValue={duration}
-                                            onChange={setDuration}
-                                            disabled={isApiDisabled || isLoading || isVariationLoading || isIdeaLoading}
-                                            icon={<ClockIcon />}
-                                        />
                                     </>
                                 )}
 
@@ -717,6 +672,61 @@ const App: React.FC = () => {
                                             </div>
                                         </div>
                                     </>
+                                )}
+
+                                <FormatSelector
+                                    selectedValue={currentPromptFormat}
+                                    onChange={handleFormatChange}
+                                    disabled={isLoading || isVariationLoading || isIdeaLoading}
+                                />
+                                
+                                {!isAnalyzeMode && (
+                                  <>
+                                    <Dropdown
+                                      legend="Genre"
+                                      options={VIDEO_STYLES}
+                                      selectedValue={isMotionMode ? formState.motion.videoStyle : formState.prompt.videoStyle}
+                                      onChange={(value) => setFormState(prev => isMotionMode 
+                                        ? { ...prev, motion: { ...prev.motion, videoStyle: value } }
+                                        : { ...prev, prompt: { ...prev.prompt, videoStyle: value } }
+                                      )}
+                                      icon={<VideoIcon />}
+                                    />
+                                    <Dropdown
+                                      legend="Camera Angle"
+                                      options={CAMERA_ANGLES}
+                                      selectedValue={formState.prompt.cameraAngle}
+                                      onChange={(value) => setFormState(prev => ({ ...prev, prompt: { ...prev.prompt, cameraAngle: value } }))}
+                                      icon={<CameraIcon />}
+                                      disabled={isMotionMode}
+                                    />
+                                    <Dropdown
+                                      legend="Quality Style"
+                                      options={VISUAL_STYLES}
+                                      selectedValue={isMotionMode ? formState.motion.visualStyle : formState.prompt.visualStyle}
+                                      onChange={(value) => setFormState(prev => isMotionMode 
+                                        ? { ...prev, motion: { ...prev.motion, visualStyle: value } }
+                                        : { ...prev, prompt: { ...prev.prompt, visualStyle: value } }
+                                      )}
+                                      icon={<PaletteIcon />}
+                                    />
+                                    
+                                    <NegativePromptSelector
+                                        options={NEGATIVE_PROMPTS}
+                                        selected={negativePrompts}
+                                        onChange={setNegativePrompts}
+                                        disabled={isApiDisabled || isLoading || isVariationLoading || isIdeaLoading}
+                                        icon={<BanIcon />}
+                                    />
+                                    
+                                    <DurationSelector
+                                        options={DURATION_OPTIONS}
+                                        selectedValue={duration}
+                                        onChange={setDuration}
+                                        disabled={isApiDisabled || isLoading || isVariationLoading || isIdeaLoading}
+                                        icon={<ClockIcon />}
+                                    />
+                                  </>
                                 )}
 
 
@@ -756,7 +766,11 @@ const App: React.FC = () => {
                         {/* Right Panel: Output */}
                         <div className="md:col-span-3 bg-light-secondary/70 dark:bg-dark-secondary/50 backdrop-blur-xl p-6 rounded-2xl shadow-lg border border-light-secondary/30 dark:border-dark-accent/30 min-h-[32rem] flex flex-col">
                             <h2 className="text-xl font-bold text-light-text-primary dark:text-dark-text mb-4 flex-shrink-0">
-                               {mainOutputJsonString ? 'Generated Prompt (JSON)' : (isAnalyzeMode ? 'Analyzed Prompt (JSON)' : 'Generated Prompt')}
+                               {mainOutputContent 
+                                   ? `Generated Prompt (${currentPromptFormat})` 
+                                   : isAnalyzeMode 
+                                       ? `Analyzed Prompt (${currentPromptFormat})` 
+                                       : 'Generated Prompt'}
                             </h2>
                             
                             {/* Main output container */}
@@ -764,24 +778,29 @@ const App: React.FC = () => {
                                 {isLoading && <div className="h-full flex justify-center items-center"><LoadingCat /></div>}
                                 {error && <div className="text-red-600 dark:text-red-500 text-center p-4"><p>Error: {error}</p></div>}
                                 
-                                {!isLoading && !error && !mainOutputJsonString && (
+                                {!isLoading && !error && !mainOutputContent && (
                                      <div className="text-center text-light-text-secondary dark:text-dark-accent h-full flex flex-col justify-center items-center">
                                         <p>Your generated prompt will appear here. <br /> Fill out the form and click "Generate Prompt".</p>
                                     </div>
                                 )}
                                 
-                                {!isLoading && !error && mainOutputJsonString && (
+                                {!isLoading && !error && mainOutputContent && (
                                     <div>
-                                        <div className="flex justify-between items-center mb-2">
-                                            <h3 className="font-semibold text-light-text-primary dark:text-dark-text">JSON Output</h3>
+                                        <div className="flex justify-end items-center mb-2">
                                             <button onClick={() => handleCopy('main', 'en')} className={`flex items-center text-sm font-medium py-1 px-3 rounded-md transition-colors ${copyStatus.type === 'main' ? 'bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300' : 'bg-light-surface hover:bg-light-accent dark:bg-dark-surface dark:hover:bg-dark-accent'}`}>
                                                 {copyStatus.type === 'main' ? <CheckIcon /> : <CopyIcon />}
-                                                {copyStatus.type === 'main' ? 'Copied!' : 'Copy JSON'}
+                                                {copyStatus.type === 'main' ? 'Copied!' : `Copy ${currentPromptFormat}`}
                                             </button>
                                         </div>
-                                        <pre className="text-sm bg-light-surface/50 dark:bg-dark-primary/80 p-4 rounded-md whitespace-pre-wrap break-words">
-                                            {mainOutputJsonString}
-                                        </pre>
+                                        {currentPromptFormat === 'JSON' ? (
+                                            <pre className="text-sm bg-light-surface/50 dark:bg-dark-primary/80 p-4 rounded-md whitespace-pre-wrap break-words">
+                                                {mainOutputContent}
+                                            </pre>
+                                        ) : (
+                                            <p className="text-sm bg-light-surface/50 dark:bg-dark-primary/80 p-4 rounded-md whitespace-pre-wrap break-words font-sans">
+                                                {mainOutputContent}
+                                            </p>
+                                        )}
                                     </div>
                                 )}
                             </div>
@@ -801,7 +820,7 @@ const App: React.FC = () => {
                                     />
                                 </div>
 
-                                <button onClick={handleGenerateVariations} disabled={isApiDisabled || isVariationLoading || isLoading || (!generatedPromptEn && !analyzedPrompt)} className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 dark:disabled:bg-indigo-900/50 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 shadow-lg hover:shadow-xl flex items-center justify-center text-lg">
+                                <button onClick={handleGenerateVariations} disabled={isApiDisabled || isVariationLoading || isLoading || !mainOutputContent} className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 dark:disabled:bg-indigo-900/50 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 shadow-lg hover:shadow-xl flex items-center justify-center text-lg">
                                      {isVariationLoading ? 'Generating...' : 'Create Variations'}
                                 </button>
 
@@ -810,7 +829,38 @@ const App: React.FC = () => {
                                     {variationError && <div className="text-red-600 dark:text-red-500 text-center p-4"><p>Variation Error: {variationError}</p></div>}
                                     
                                     {promptVariations.length > 0 && (
-                                        !isAnalyzeMode ? (
+                                        // The logic `promptVariations[0].indonesian` now directs both JSON and Description formats 
+                                        // to the accordion view, as the service no longer provides Indonesian translations.
+                                        promptVariations[0].indonesian ? (
+                                            <div className="space-y-4 pt-4 max-h-96 overflow-y-auto pr-2">
+                                                {promptVariations.map((variation, index) => (
+                                                    <div key={index} className="p-4 bg-light-surface/50 dark:bg-dark-primary/60 rounded-lg">
+                                                        <h3 className="text-lg font-bold text-light-text-primary dark:text-dark-text mb-4">Variation {index + 1}</h3>
+                                                        <div>
+                                                            <div className="flex justify-between items-center mb-2">
+                                                                <h4 className="font-semibold text-light-text-primary dark:text-dark-text">English</h4>
+                                                                <button onClick={() => handleCopy('variation', 'en', index)} className={`flex items-center text-sm font-medium py-1 px-3 rounded-md transition-colors ${copyStatus.type === 'variation' && copyStatus.lang === 'en' && copyStatus.index === index ? 'bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300' : 'bg-light-secondary hover:bg-light-accent dark:bg-dark-surface dark:hover:bg-dark-accent'}`}>
+                                                                    {copyStatus.type === 'variation' && copyStatus.lang === 'en' && copyStatus.index === index ? <CheckIcon/> : <CopyIcon/>}
+                                                                    {copyStatus.type === 'variation' && copyStatus.lang === 'en' && copyStatus.index === index ? 'Copied!' : 'Copy'}
+                                                                </button>
+                                                            </div>
+                                                            <p className="text-sm">{variation.english}</p>
+                                                        </div>
+                                                        <hr className="my-4 border-light-accent/50 dark:border-dark-surface" />
+                                                        <div>
+                                                            <div className="flex justify-between items-center mb-2">
+                                                                <h4 className="font-semibold text-light-text-primary dark:text-dark-text">Indonesia</h4>
+                                                                <button onClick={() => handleCopy('variation', 'id', index)} className={`flex items-center text-sm font-medium py-1 px-3 rounded-md transition-colors ${copyStatus.type === 'variation' && copyStatus.lang === 'id' && copyStatus.index === index ? 'bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300' : 'bg-light-secondary hover:bg-light-accent dark:bg-dark-surface dark:hover:bg-dark-accent'}`}>
+                                                                    {copyStatus.type === 'variation' && copyStatus.lang === 'id' && copyStatus.index === index ? <CheckIcon/> : <CopyIcon/>}
+                                                                    {copyStatus.type === 'variation' && copyStatus.lang === 'id' && copyStatus.index === index ? 'Tersalin!' : 'Salin'}
+                                                                </button>
+                                                            </div>
+                                                            <p className="text-sm">{variation.indonesian}</p>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
                                             <div className="space-y-2 mt-4 max-h-96 overflow-y-auto pr-2">
                                                 {promptVariations.map((variation, index) => (
                                                     <div key={index} className="bg-light-surface/50 dark:bg-dark-primary/60 rounded-lg overflow-hidden border border-light-accent/50 dark:border-dark-surface/50">
@@ -818,7 +868,7 @@ const App: React.FC = () => {
                                                             onClick={() => {
                                                                 setActiveVariationIndex(activeVariationIndex === index ? null : index);
                                                             }}
-                                                            className="w-full text-left p-3 flex justify-between items-center font-semibold text-light-text-primary dark:text-dark-text hover:bg-light-surface dark:hover:bg-dark-surface transition-colors"
+                                                            className="w-full text-left p-3 flex justify-between items-center font-semibold text-light-text-primary dark:text-dark-text hover:bg-light-secondary dark:hover:bg-dark-surface transition-colors"
                                                             aria-expanded={activeVariationIndex === index}
                                                             aria-controls={`variation-content-${index}`}
                                                         >
@@ -830,45 +880,22 @@ const App: React.FC = () => {
                                                         {activeVariationIndex === index && (
                                                             <div id={`variation-content-${index}`} className="p-3 pt-0 bg-light-primary/50 dark:bg-dark-primary/70">
                                                                 <div className="flex justify-end mb-2">
-                                                                    <button onClick={() => handleCopy('variation', 'en', index)} className={`flex items-center text-sm font-medium py-1 px-3 rounded-md transition-colors ${copyStatus.type === 'variation' && copyStatus.index === index ? 'bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300' : 'bg-light-surface hover:bg-light-accent dark:bg-dark-surface dark:hover:bg-dark-accent'}`}>
+                                                                    <button onClick={() => handleCopy('variation', 'en', index)} className={`flex items-center text-sm font-medium py-1 px-3 rounded-md transition-colors ${copyStatus.type === 'variation' && copyStatus.index === index ? 'bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300' : 'bg-light-secondary hover:bg-light-accent dark:bg-dark-surface dark:hover:bg-dark-accent'}`}>
                                                                         {copyStatus.type === 'variation' && copyStatus.index === index ? <CheckIcon /> : <CopyIcon />}
-                                                                        {copyStatus.type === 'variation' && copyStatus.index === index ? 'Copied!' : 'Copy JSON'}
+                                                                        {copyStatus.type === 'variation' && copyStatus.index === index ? 'Copied!' : `Copy ${currentPromptFormat}`}
                                                                     </button>
                                                                 </div>
-                                                                <pre className="text-sm bg-light-surface/50 dark:bg-dark-primary/80 p-4 rounded-md whitespace-pre-wrap break-words">
-                                                                    {variation.english}
-                                                                </pre>
+                                                                {currentPromptFormat === 'JSON' ? (
+                                                                    <pre className="text-sm bg-light-surface/50 dark:bg-dark-primary/80 p-4 rounded-md whitespace-pre-wrap break-words">
+                                                                        {variation.english}
+                                                                    </pre>
+                                                                ) : (
+                                                                    <p className="text-sm bg-light-surface/50 dark:bg-dark-primary/80 p-4 rounded-md whitespace-pre-wrap break-words font-sans">
+                                                                        {variation.english}
+                                                                    </p>
+                                                                )}
                                                             </div>
                                                         )}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        ) : (
-                                            <div className="space-y-4 pt-4 max-h-96 overflow-y-auto">
-                                                {promptVariations.map((variation, index) => (
-                                                    <div key={index} className="p-4 bg-light-secondary/50 dark:bg-dark-secondary/40 rounded-lg">
-                                                        <h3 className="text-lg font-bold text-light-text-primary dark:text-dark-text mb-4">Variation {index + 1}</h3>
-                                                        <div>
-                                                            <div className="flex justify-between items-center mb-2">
-                                                                <h4 className="font-semibold text-light-text-primary dark:text-dark-text">English</h4>
-                                                                <button onClick={() => handleCopy('variation', 'en', index)} className={`flex items-center text-sm font-medium py-1 px-3 rounded-md transition-colors ${copyStatus.type === 'variation' && copyStatus.lang === 'en' && copyStatus.index === index ? 'bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300' : 'bg-light-surface hover:bg-light-accent dark:bg-dark-surface dark:hover:bg-dark-accent'}`}>
-                                                                    {copyStatus.type === 'variation' && copyStatus.lang === 'en' && copyStatus.index === index ? <CheckIcon/> : <CopyIcon/>}
-                                                                    {copyStatus.type === 'variation' && copyStatus.lang === 'en' && copyStatus.index === index ? 'Copied!' : 'Copy'}
-                                                                </button>
-                                                            </div>
-                                                            <p className="text-sm">{variation.english}</p>
-                                                        </div>
-                                                        <hr className="my-4 border-light-accent/50 dark:border-dark-surface" />
-                                                        <div>
-                                                            <div className="flex justify-between items-center mb-2">
-                                                                <h4 className="font-semibold text-light-text-primary dark:text-dark-text">Indonesia</h4>
-                                                                <button onClick={() => handleCopy('variation', 'id', index)} className={`flex items-center text-sm font-medium py-1 px-3 rounded-md transition-colors ${copyStatus.type === 'variation' && copyStatus.lang === 'id' && copyStatus.index === index ? 'bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300' : 'bg-light-surface hover:bg-light-accent dark:bg-dark-surface dark:hover:bg-dark-accent'}`}>
-                                                                    {copyStatus.type === 'variation' && copyStatus.lang === 'id' && copyStatus.index === index ? <CheckIcon/> : <CopyIcon/>}
-                                                                    {copyStatus.type === 'variation' && copyStatus.lang === 'id' && copyStatus.index === index ? 'Tersalin!' : 'Salin'}
-                                                                </button>
-                                                            </div>
-                                                            <p className="text-sm">{variation.indonesian}</p>
-                                                        </div>
                                                     </div>
                                                 ))}
                                             </div>
