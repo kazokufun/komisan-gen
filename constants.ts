@@ -1,4 +1,4 @@
-import { RadioOption } from './types';
+import { RadioOption, VariationAspect } from './types';
 
 export const VIDEO_STYLES: RadioOption[] = [
   { id: 'cinematic', label: 'Cinematic', description: 'Dramatic, high-contrast lighting and epic feel.' },
@@ -28,6 +28,8 @@ export const VISUAL_STYLES: RadioOption[] = [
   { id: 'flat-style', label: 'Flat Style', description: 'Minimalist, two-dimensional with no depth.' },
   { id: '2d-style', label: '2D Style', description: 'Classic 2D animation look.' },
 ];
+
+export const VARIATION_ASPECT_OPTIONS: VariationAspect[] = ['Background', 'Subject', 'Element', 'Colors', 'Texture', 'Visual Style', 'Pattern Animations'];
 
 export const NEGATIVE_PROMPTS: string[] = [
   'ugly',
