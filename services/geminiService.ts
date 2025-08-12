@@ -1,7 +1,7 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
 import type { GoogleGenAI as GoogleGenAIType } from "@google/genai";
-import { PromptOptions, PromptVariation, AnalyzedPrompt, AnalysisLevel, PromptFormat } from '../types';
+import { PromptOptions, PromptVariation, AnalyzedPrompt, AnalysisLevel, PromptFormat, VariationAspect } from '../types';
 
 let activeApiKeys: string[] = [];
 let lastUsedIndex = -1;
@@ -203,26 +203,27 @@ export const generateVideoPrompt = async (options: PromptOptions): Promise<strin
   }
 };
 
-export const generatePromptVariations = async (originalPrompt: string, instruction: string, promptFormat: PromptFormat): Promise<PromptVariation[]> => {
+export const generatePromptVariations = async (originalPrompt: string, variationAspects: VariationAspect[], promptFormat: PromptFormat): Promise<PromptVariation[]> => {
     const ai = getAiClient();
     let systemInstruction: string;
     let responseSchema: any;
     let userPrompt: string;
-    const numVariations = 3;
+    const numVariations = 5;
 
     if (promptFormat === 'Description') {
         systemInstruction = `You are a creative prompt engineer specializing in text-to-video generation. Your task is to create ${numVariations} distinct variations of a given prompt description.
 
 **Key Constraints:**
-1.  **Follow Instructions:** If a specific user instruction is given, prioritize it for creating variations.
-2.  **Creative Freedom:** Creatively alter elements like color palettes, shapes, movement, or environment, while keeping the core subject.
+1.  **Focused Variation:** You MUST only alter the aspects specified by the user: "${variationAspects.join(', ')}". For example, if the user chose 'Background', only change the background description. If they chose 'Colors', only change the color descriptions. All other elements like subject, action, style, camera angles, etc., MUST be preserved.
+2.  **Creative Freedom:** Be creative with the changes for the specified aspect.
 3.  **English Only:** The output must be in English.
 4.  **Output Format:** Your final output must be a valid JSON array of objects, each with an "english" key containing the prompt. Do not add any extra text, commentary, or markdown formatting.`;
         
         userPrompt = `
           Original prompt description: "${originalPrompt}"
 
-          ${instruction ? `**User Instruction for Variations:**\n"${instruction}"` : `**Instruction:** Generate creative variations by altering elements like color, mood, or setting.`}
+          **User-selected aspects to vary:**
+          "${variationAspects.join(', ')}"
 
           Now, generate ${numVariations} English-only variations based on these instructions, ensuring your output is a valid JSON array.
         `;
@@ -265,10 +266,13 @@ export const generatePromptVariations = async (originalPrompt: string, instructi
 
 **Key Constraints:**
 1.  **Maintain Structure:** Each variation must be a valid JSON object with the exact same structure as the original ('prompt_components' and 'technical_parameters').
-2.  **Creative Alterations:** Creatively alter fields like 'subject', 'action_detail', 'setting_detail', and 'lighting_mood'.
-3.  **Preserve Technicals:** Keep 'genre', 'quality_style', 'camera_shot', and 'duration_seconds' the same as the original, unless the user's instruction explicitly asks to change them.
-4.  **Follow Instructions:** Prioritize the user's instruction for creating variations.
-5.  **Output Format:** Your final output MUST be a valid JSON array of these prompt objects. Do not add any extra text, commentary, or markdown formatting.`;
+2.  **Focused Variation:** You MUST only alter the values related to the aspects specified by the user: "${variationAspects.join(', ')}". All other key-value pairs in the JSON structure MUST remain identical to the original prompt.
+    - If 'Background' is chosen, alter 'setting_detail'.
+    - If 'Subject' is chosen, alter 'subject'.
+    - If 'Colors' is chosen, alter 'lighting_mood' or add color descriptions to other relevant fields.
+    - If 'Visual Style' is chosen, alter 'quality_style'.
+    - Adapt creatively for other aspects like 'Element', 'Texture', 'Pattern Animations'.
+3.  **Output Format:** Your final output MUST be a valid JSON array of these prompt objects. Do not add any extra text, commentary, or markdown formatting.`;
         
         userPrompt = `
             Original JSON prompt:
@@ -276,7 +280,8 @@ export const generatePromptVariations = async (originalPrompt: string, instructi
             ${originalPrompt}
             \`\`\`
 
-            ${instruction ? `**User Instruction for Variations:**\n"${instruction}"` : `**Instruction:** Generate creative variations of the JSON prompt above.`}
+            **User-selected aspects to vary:**
+            "${variationAspects.join(', ')}"
 
             Now, generate ${numVariations} variations based on these instructions.
         `;
