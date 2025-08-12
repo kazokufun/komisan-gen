@@ -1,7 +1,7 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { PromptOptions, PromptVariation, AnalyzedPrompt, AnalysisLevel, ApiSettings, PromptFormat } from './types';
-import { VIDEO_STYLES, CAMERA_ANGLES, VISUAL_STYLES, NEGATIVE_PROMPTS } from './constants';
+import { PromptOptions, PromptVariation, AnalyzedPrompt, AnalysisLevel, ApiSettings, PromptFormat, VariationAspect } from './types';
+import { VIDEO_STYLES, CAMERA_ANGLES, VISUAL_STYLES, NEGATIVE_PROMPTS, VARIATION_ASPECT_OPTIONS } from './constants';
 import { generateVideoPrompt, generatePromptVariations, analyzeVideoForPrompt, generateCreativeIdea, updateApiKeys } from './services/geminiService';
 import Dropdown from './components/Dropdown';
 import ThemeToggle from './components/ThemeToggle';
@@ -28,6 +28,7 @@ import SaveIcon from './components/icons/SaveIcon';
 import ClearDataIcon from './components/icons/ClearDataIcon';
 import BanIcon from './components/icons/BanIcon';
 import ClockIcon from './components/icons/ClockIcon';
+import DownloadIcon from './components/icons/DownloadIcon';
 
 const DURATION_OPTIONS = [5, 8, 10];
 
@@ -110,7 +111,7 @@ const App: React.FC = () => {
     const [isVariationLoading, setIsVariationLoading] = useState(false);
     const [variationError, setVariationError] = useState<string | null>(null);
     const [promptVariations, setPromptVariations] = useState<PromptVariation[]>([]);
-    const [variationInstruction, setVariationInstruction] = useState('');
+    const [variationAspects, setVariationAspects] = useState<VariationAspect[]>(['Background']);
     const [activeVariationIndex, setActiveVariationIndex] = useState<number | null>(null);
     
     const [analyzedPrompt, setAnalyzedPrompt] = useState<AnalyzedPrompt | string | null>(null);
@@ -267,7 +268,7 @@ const App: React.FC = () => {
         setAnalyzedPrompt(null);
         setError(null);
         setVariationError(null);
-        setVariationInstruction('');
+        setVariationAspects(['Background']);
         setActiveVariationIndex(null);
         setCopyStatus({ type: 'idle' });
         setIdeaInput('');
@@ -426,6 +427,18 @@ const App: React.FC = () => {
         }
     }, [formState, mode, isAnalyzeMode, isMotionMode, negativePrompts, duration]);
 
+    const handleVariationAspectChange = (aspect: VariationAspect) => {
+        setVariationAspects(prev => {
+            const isSelected = prev.includes(aspect);
+            if (isSelected) {
+                return prev.filter(a => a !== aspect);
+            }
+            if (prev.length < 3) {
+                return [...prev, aspect];
+            }
+            return prev;
+        });
+    };
 
     const handleGenerateVariations = async () => {
         const originalPrompt = isAnalyzeMode && analyzedPrompt 
@@ -437,6 +450,11 @@ const App: React.FC = () => {
             : (isMotionMode ? formState.motion.promptFormat : formState.prompt.promptFormat);
 
         if (!originalPrompt) return;
+        
+        if (variationAspects.length === 0) {
+            setVariationError("Please select at least one variation aspect.");
+            return;
+        }
 
         setIsVariationLoading(true);
         setVariationError(null);
@@ -446,7 +464,7 @@ const App: React.FC = () => {
         try {
             const variations = await generatePromptVariations(
                 originalPrompt, 
-                variationInstruction,
+                variationAspects,
                 promptFormat,
             );
             setPromptVariations(variations);
@@ -459,6 +477,26 @@ const App: React.FC = () => {
         } finally {
             setIsVariationLoading(false);
         }
+    };
+
+    const handleDownloadPrompts = () => {
+        if (!mainOutputContent || promptVariations.length === 0) return;
+
+        const allPrompts = [
+            `Title Prompt\n${mainOutputContent}`,
+            ...promptVariations.map(v => v.english)
+        ];
+
+        const fileContent = allPrompts.join('\n');
+
+        const blob = new Blob([fileContent], { type: 'text/plain;charset=utf-8' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = 'generated_prompts.txt';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(link.href);
     };
 
     const handleCopy = (type: 'main' | 'variation', lang: 'en' | 'id', index?: number) => {
@@ -774,7 +812,7 @@ const App: React.FC = () => {
                             </h2>
                             
                             {/* Main output container */}
-                            <div className="flex-grow bg-light-primary/50 dark:bg-dark-primary/70 rounded-lg text-light-text-primary dark:text-dark-text text-base leading-relaxed overflow-y-auto p-4 mb-4">
+                            <div className="min-h-[11rem] max-h-[28rem] bg-light-primary/50 dark:bg-dark-primary/70 rounded-lg text-light-text-primary dark:text-dark-text text-base leading-relaxed overflow-y-auto p-4 mb-4">
                                 {isLoading && <div className="h-full flex justify-center items-center"><LoadingCat /></div>}
                                 {error && <div className="text-red-600 dark:text-red-500 text-center p-4"><p>Error: {error}</p></div>}
                                 
@@ -807,22 +845,66 @@ const App: React.FC = () => {
 
                             {/* Variations Section */}
                             <div className="flex-shrink-0 pt-4 border-t border-light-accent/50 dark:border-dark-surface">
-                                <div className="mb-2">
-                                    <label htmlFor="variation-instruction" className="block text-sm font-medium text-light-text-primary dark:text-dark-text mb-1">
-                                        Variation Instruction (Optional)
-                                    </label>
-                                    <textarea
-                                        id="variation-instruction"
-                                        value={variationInstruction}
-                                        onChange={(e) => setVariationInstruction(e.target.value)}
-                                        placeholder="e.g., 'Make it darker and more mysterious' or 'Change the setting to a futuristic city'"
-                                        className="w-full h-20 p-3 bg-light-surface/80 dark:bg-dark-surface/80 rounded-lg border-2 border-transparent focus:border-brand-blue/50 focus:ring-brand-blue/50 transition-all text-light-text-primary dark:text-dark-text placeholder:text-light-text-secondary dark:placeholder:text-dark-accent text-sm"
-                                    />
+                                <fieldset className="mb-4">
+                                    <legend className="block text-sm font-medium text-light-text-primary dark:text-dark-text mb-2">
+                                        Choose up to 3 Variations
+                                    </legend>
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                                        {VARIATION_ASPECT_OPTIONS.map(aspect => {
+                                            const inputId = `variation-aspect-${aspect.replace(/\s+/g, '-')}`;
+                                            const isSelected = variationAspects.includes(aspect);
+                                            const isDisabled = !isSelected && variationAspects.length >= 3;
+                                            return (
+                                                <div key={aspect}>
+                                                    <input
+                                                        type="checkbox"
+                                                        id={inputId}
+                                                        name="variation-aspect"
+                                                        value={aspect}
+                                                        checked={isSelected}
+                                                        onChange={() => handleVariationAspectChange(aspect)}
+                                                        disabled={isDisabled}
+                                                        className="hidden peer"
+                                                    />
+                                                    <label
+                                                        htmlFor={inputId}
+                                                        className={`
+                                                            flex items-center justify-center text-center p-2 rounded-lg transition-all duration-200 
+                                                            border-2 border-transparent
+                                                            text-light-text-secondary dark:text-dark-text 
+                                                            select-none text-xs sm:text-sm
+                                                            peer-disabled:opacity-50 peer-disabled:cursor-not-allowed peer-disabled:hover:bg-transparent dark:peer-disabled:hover:bg-transparent
+                                                            ${isDisabled ? '' : 'cursor-pointer hover:bg-light-surface/70 dark:hover:bg-dark-surface/50'}
+                                                            peer-checked:text-brand-blue peer-checked:dark:text-brand-blue
+                                                            peer-checked:font-semibold
+                                                            peer-checked:bg-brand-blue/10 dark:peer-checked:bg-brand-blue/20
+                                                            peer-checked:border-brand-blue/30
+                                                        `}
+                                                    >
+                                                        {aspect}
+                                                    </label>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </fieldset>
+
+                                <div className="flex items-center space-x-2">
+                                    <button onClick={handleGenerateVariations} disabled={isApiDisabled || isVariationLoading || isLoading || !mainOutputContent} className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 dark:disabled:bg-indigo-900/50 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 shadow-lg hover:shadow-xl flex items-center justify-center text-lg">
+                                        {isVariationLoading ? 'Generating...' : 'Create Variations'}
+                                    </button>
+                                    {promptVariations.length > 0 && !isVariationLoading && (
+                                        <button
+                                            onClick={handleDownloadPrompts}
+                                            disabled={isLoading}
+                                            className="flex-shrink-0 bg-green-600 hover:bg-green-700 disabled:bg-green-400 dark:disabled:bg-green-800 disabled:cursor-not-allowed text-white font-bold p-3 rounded-lg transition-all duration-300 shadow-lg hover:shadow-xl flex items-center justify-center"
+                                            aria-label="Download Prompts"
+                                        >
+                                            <DownloadIcon />
+                                        </button>
+                                    )}
                                 </div>
 
-                                <button onClick={handleGenerateVariations} disabled={isApiDisabled || isVariationLoading || isLoading || !mainOutputContent} className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 dark:disabled:bg-indigo-900/50 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 shadow-lg hover:shadow-xl flex items-center justify-center text-lg">
-                                     {isVariationLoading ? 'Generating...' : 'Create Variations'}
-                                </button>
 
                                 <div className="mt-4">
                                     {isVariationLoading && <div className="flex justify-center py-4"><LoadingCat /></div>}
