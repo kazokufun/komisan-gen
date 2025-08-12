@@ -3,6 +3,8 @@ export type PromptFormat = 'JSON' | 'Description';
 
 export type AnalysisLevel = 'Normal' | 'Akurat' | 'Detail';
 
+export type VariationAspect = 'Background' | 'Subject' | 'Element' | 'Colors' | 'Texture' | 'Visual Style' | 'Pattern Animations';
+
 export interface PromptOptions {
   idea: string;
   videoStyle: string;
