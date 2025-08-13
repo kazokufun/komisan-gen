@@ -1,4 +1,5 @@
 
+
 import React, { useState, useCallback, useEffect } from 'react';
 import { PromptOptions, PromptVariation, AnalyzedPrompt, AnalysisLevel, ApiSettings, PromptFormat, VariationAspect } from './types';
 import { VIDEO_STYLES, CAMERA_ANGLES, VISUAL_STYLES, NEGATIVE_PROMPTS, VARIATION_ASPECT_OPTIONS } from './constants';
@@ -480,19 +481,16 @@ const App: React.FC = () => {
     };
 
     const handleDownloadPrompts = () => {
-        if (!mainOutputContent || promptVariations.length === 0) return;
+        if (promptVariations.length === 0) return;
 
-        const allPrompts = [
-            `Title Prompt\n${mainOutputContent}`,
-            ...promptVariations.map(v => v.english)
-        ];
-
-        const fileContent = allPrompts.join('\n');
+        const fileContent = promptVariations
+            .map(variation => variation.english)
+            .join('\n');
 
         const blob = new Blob([fileContent], { type: 'text/plain;charset=utf-8' });
         const link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
-        link.download = 'generated_prompts.txt';
+        link.download = 'prompt_variations.txt';
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
