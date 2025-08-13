@@ -1,4 +1,5 @@
 
+
 import { GoogleGenAI, Type } from "@google/genai";
 import type { GoogleGenAI as GoogleGenAIType } from "@google/genai";
 import { PromptOptions, PromptVariation, AnalyzedPrompt, AnalysisLevel, PromptFormat, VariationAspect } from '../types';
@@ -74,7 +75,8 @@ export const generateVideoPrompt = async (options: PromptOptions): Promise<strin
 - The description should be rich in visual detail, covering subjects, actions, setting, lighting, and mood.
 - Do not use JSON, markdown, or any structured format. The output must be a single block of text.
 - Weave the genre, camera angle, quality style, and duration into the description naturally and creatively.
-- For example, instead of 'duration: 5s', you might say 'a brief 5-second shot'.`;
+- For example, instead of 'duration: 5s', you might say 'a brief 5-second shot'.
+- The entire final description MUST NOT exceed 990 characters.`;
 
       const userPromptText = `
         Core Idea: "${idea}"
@@ -99,6 +101,8 @@ export const generateVideoPrompt = async (options: PromptOptions): Promise<strin
           config: {
             systemInstruction,
             temperature: 0.8,
+            maxOutputTokens: 400,
+            thinkingConfig: { thinkingBudget: 100 },
           },
         });
         const description = response.text.trim();
@@ -122,6 +126,7 @@ export const generateVideoPrompt = async (options: PromptOptions): Promise<strin
 - Populate the 'prompt_components' and 'technical_parameters' fields based on the user's input and your analysis.
 - 'genre', 'quality_style', 'camera_shot', and 'duration_seconds' must be populated directly from the user's provided values.
 - If a reference image is provided, draw inspiration from its composition, color palette, and subject matter to enrich the JSON fields.
+- The total character count of the generated JSON output, including all formatting, MUST NOT exceed 990 characters. Be concise in your descriptions for 'subject', 'action_detail', 'setting_detail', and 'lighting_mood' to meet this constraint.
 - Your final output MUST be a valid JSON object that strictly adheres to the provided schema. Do not add any extra text, commentary, or markdown formatting.`;
   
   const userPromptText = `
@@ -181,6 +186,8 @@ export const generateVideoPrompt = async (options: PromptOptions): Promise<strin
         responseMimeType: "application/json",
         responseSchema,
         temperature: 0.7,
+        maxOutputTokens: 600,
+        thinkingConfig: { thinkingBudget: 200 },
       },
     });
     
@@ -217,7 +224,8 @@ export const generatePromptVariations = async (originalPrompt: string, variation
 1.  **Focused Variation:** You MUST only alter the aspects specified by the user: "${variationAspects.join(', ')}". For example, if the user chose 'Background', only change the background description. If they chose 'Colors', only change the color descriptions. All other elements like subject, action, style, camera angles, etc., MUST be preserved.
 2.  **Creative Freedom:** Be creative with the changes for the specified aspect.
 3.  **English Only:** The output must be in English.
-4.  **Output Format:** Your final output must be a valid JSON array of objects, each with an "english" key containing the prompt. Do not add any extra text, commentary, or markdown formatting.`;
+4.  **Output Format:** Your final output must be a valid JSON array of objects, each with an "english" key containing the prompt. Do not add any extra text, commentary, or markdown formatting.
+5.  **Character Limit:** Each generated variation description (the value of the "english" key) MUST NOT exceed 990 characters.`;
         
         userPrompt = `
           Original prompt description: "${originalPrompt}"
@@ -272,7 +280,8 @@ export const generatePromptVariations = async (originalPrompt: string, variation
     - If 'Colors' is chosen, alter 'lighting_mood' or add color descriptions to other relevant fields.
     - If 'Visual Style' is chosen, alter 'quality_style'.
     - Adapt creatively for other aspects like 'Element', 'Texture', 'Pattern Animations'.
-3.  **Output Format:** Your final output MUST be a valid JSON array of these prompt objects. Do not add any extra text, commentary, or markdown formatting.`;
+3.  **Output Format:** Your final output MUST be a valid JSON array of these prompt objects. Do not add any extra text, commentary, or markdown formatting.
+4.  **Character Limit:** The total character count of each generated JSON variation, including all formatting, MUST NOT exceed 990 characters. Keep descriptions concise to meet this constraint.`;
         
         userPrompt = `
             Original JSON prompt:
@@ -342,26 +351,28 @@ export const generatePromptVariations = async (originalPrompt: string, variation
 
 const getSystemInstructionForAnalysis = (level: AnalysisLevel, promptFormat: PromptFormat): string => {
     if (promptFormat === 'Description') {
+        const baseInstruction = "The output must be a single block of text and MUST NOT exceed 990 characters. Do not use JSON, markdown, or any structured format.";
         switch (level) {
             case 'Akurat':
-                return `You are a precise and objective video analyst. Your task is to analyze the provided video and factually describe its contents in a single, concise paragraph. Focus strictly on what is visually present. Avoid interpretation, inferring emotion, or adding creative flair. The output should be a direct, factual report in text format. Do not use JSON or markdown.`;
+                return `You are a precise and objective video analyst. Your task is to analyze the provided video and factually describe its contents in a single, concise paragraph. Focus strictly on what is visually present. Avoid interpretation, inferring emotion, or adding creative flair. ${baseInstruction}`;
             case 'Detail':
-                return `You are a highly meticulous and descriptive video analyst. Your task is to provide an exhaustive, verbose analysis of the video in a single, detailed paragraph. Delve into minute details: textures, subtle background elements, specific color palettes, lighting nuances, and the precise choreography of movements. Aim for a rich, dense description that captures every possible visual aspect. The output must be text only. Do not use JSON or markdown.`;
+                return `You are a highly meticulous and descriptive video analyst. Your task is to provide a very detailed analysis of the video in a single paragraph. Delve into details like textures, background elements, color palettes, lighting, and movements. ${baseInstruction}`;
             case 'Normal':
             default:
-                return `You are a world-class video analyst. Your task is to analyze the provided video and generate a vivid, descriptive paragraph that could be used as a prompt to recreate a similar video. Capture the scene, subjects, actions, style, camera work, and mood in a flowing narrative. The output must be a single block of text. Do not use JSON, markdown, or any structured format.`;
+                return `You are a world-class video analyst. Your task is to analyze the provided video and generate a vivid, descriptive paragraph that could be used as a prompt to recreate a similar video. Capture the scene, subjects, actions, style, camera work, and mood in a flowing narrative. ${baseInstruction}`;
         }
     }
 
     // JSON format instructions
+    const jsonBaseInstruction = `Your final output must be a valid JSON object matching the provided schema, and its total character count MUST NOT exceed 990. Do not include any extra text, commentary, or markdown formatting. Keep all text values concise to meet this constraint.`;
     switch (level) {
         case 'Akurat':
-            return `You are a precise and objective video analyst. Your task is to analyze the provided video and factually describe its contents in JSON format. Focus strictly on what is visually present. Avoid interpretation, inferring emotion, or adding creative flair. The output should be a direct, factual report. Your final output must be a valid JSON object matching the provided schema. Do not include any extra text, commentary, or markdown formatting.`;
+            return `You are a precise and objective video analyst. Your task is to analyze the provided video and factually describe its contents in JSON format. Focus strictly on what is visually present. Avoid interpretation or emotion. ${jsonBaseInstruction}`;
         case 'Detail':
-            return `You are a highly meticulous and descriptive video analyst. Your task is to provide an exhaustive, verbose analysis of the video in JSON format. Delve into minute details: textures, subtle background elements, specific color palettes, lighting nuances, and the precise choreography of movements. Aim for a rich, dense description that captures every possible visual aspect. Your final output must be a valid JSON object matching the provided schema. Do not include any extra text, commentary, or markdown formatting.`;
+            return `You are a highly meticulous and descriptive video analyst. Your task is to provide a very detailed analysis of the video in JSON format. Delve into details like textures, background elements, color palettes, lighting, and movements. ${jsonBaseInstruction}`;
         case 'Normal':
         default:
-            return `You are a world-class video analyst and prompt engineer. Your task is to analyze the provided video and generate a structured, detailed prompt in JSON format that could be used to recreate a similar video. Your final output must be a valid JSON object matching the provided schema. Do not include any extra text, commentary, or markdown formatting.`;
+            return `You are a world-class video analyst and prompt engineer. Your task is to analyze the provided video and generate a structured, detailed prompt in JSON format that could be used to recreate a similar video. ${jsonBaseInstruction}`;
     }
 };
 
@@ -381,7 +392,11 @@ export const analyzeVideoForPrompt = async (videoData: { mimeType: string, data:
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash",
             contents,
-            config: { systemInstruction }
+            config: { 
+                systemInstruction,
+                maxOutputTokens: 400,
+                thinkingConfig: { thinkingBudget: 100 },
+            }
         });
         const description = response.text.trim();
         if (!description) {
@@ -409,7 +424,9 @@ export const analyzeVideoForPrompt = async (videoData: { mimeType: string, data:
                     mood: { type: Type.STRING, description: "The emotional tone or atmosphere of the video (e.g., 'Dramatic', 'Peaceful', 'Energetic')." }
                 },
                 required: ["sceneDescription", "keySubjects", "actions", "qualityStyle", "cameraMovement", "mood"]
-            }
+            },
+            maxOutputTokens: 600,
+            thinkingConfig: { thinkingBudget: 200 },
         }
     });
 
